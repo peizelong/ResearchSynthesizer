@@ -1,0 +1,31 @@
+version: "3.9"
+
+services:
+  api:
+    build: .
+    container_name: research-synth-api
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data
+      - ./.env:/app/.env:ro
+    environment:
+      - PYTHONPATH=/app
+      - DATABASE_URL=sqlite:////app/data/research.db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+
+  # Phase 2+ 引入外部验证时启用
+  # searxng:
+  #   image: searxng/searxng:latest
+  #   container_name: research-synth-searxng
+  #   ports:
+  #     - "8888:8080"
+  #   volumes:
+  #     - ./searxng:/etc/searxng:rw
+  #   restart: unless-stopped
