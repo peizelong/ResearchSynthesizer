@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 
 from synthesizer.database import get_db
-from synthesizer.repositories import ArticleRepository, ClaimRepository
+from synthesizer.repositories import ArticleRepository, NarrativeRepository
 from synthesizer.schemas import ArticleResponse, ArticleListItem, CrawlRequest
 from synthesizer.crawlers import crawler_controller
 from synthesizer.extractors import get_extractor
@@ -49,39 +49,38 @@ def crawl_status(source: str = Query("jiuyan_web")):
 
 
 @router.post("/{article_id}/extract")
-def extract_claims(article_id: str, db: Session = Depends(get_db)):
-    """对单篇文章抽取 claims"""
+def extract_narrative(article_id: str, db: Session = Depends(get_db)):
+    """对单篇文章提取叙事（Narrative Synthesizer）。"""
     article_repo = ArticleRepository(db)
-    claim_repo = ClaimRepository(db)
+    narrative_repo = NarrativeRepository(db)
 
     article = article_repo.get(article_id)
     if not article:
         raise HTTPException(404, "Article not found")
 
-    if article.extraction_status == "extracted":
-        return {"status": "already_extracted", "claims_count": len(claim_repo.list_by_article(article_id))}
+    existing = narrative_repo.list_by_article(article_id)
+    if existing:
+        return {"status": "already_extracted", "narratives_count": len(existing)}
 
     try:
         article_repo.update_extraction_status(article_id, "extracting")
         extractor = get_extractor()
         extracted = extractor.extract(article.title, article.content)
-
-        for c in extracted:
-            claim_repo.create(
-                article_id=article_id,
-                claim_type=c.claim_type,
-                subject=c.subject,
-                predicate=c.predicate,
-                object_value=c.object_value,
-                direction_tag=c.direction_tag,
-                direction_angle=c.direction_angle,
-                evidence_text=c.evidence_text,
-                confidence=c.confidence,
-                extractor_model=extractor.model_name,
-            )
-
+        narrative_repo.create(
+            article_id=article_id,
+            main_themes=extracted.main_themes,
+            background=extracted.background or None,
+            catalysts=extracted.catalysts,
+            industry_segments=extracted.industry_segments,
+            companies=extracted.companies,
+            logic_chains=extracted.logic_chains,
+            angle=extracted.angle or None,
+            sentiment=extracted.sentiment or None,
+            time_window=extracted.time_window or None,
+            extractor_model=extractor.model_name,
+        )
         article_repo.update_extraction_status(article_id, "extracted")
-        return {"status": "extracted", "claims_count": len(extracted)}
+        return {"status": "extracted", "themes_count": len(extracted.main_themes)}
     except Exception as exc:
         article_repo.update_extraction_status(article_id, "failed")
         raise HTTPException(500, f"Extraction failed: {exc}") from exc

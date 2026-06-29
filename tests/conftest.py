@@ -16,7 +16,7 @@ _tmp_db.close()
 os.environ["DATABASE_URL"] = f"sqlite:///{_tmp_db.name}"
 
 from synthesizer.database import Base  # noqa: E402
-from synthesizer.models import Article, Claim, ResearchBatch  # noqa: E402
+from synthesizer.models import Article, ResearchBatch  # noqa: E402
 
 
 @pytest.fixture()
@@ -72,25 +72,3 @@ def sample_batch(db_session, sample_articles) -> ResearchBatch:
     db_session.add(batch)
     db_session.commit()
     return batch
-
-
-def make_claim(
-    article_id: str,
-    direction_tag: str | None,
-    direction_angle: str | None = "industry",
-    confidence: float = 0.7,
-    subject: str = "示例主体",
-    predicate: str = "示例谓词",
-) -> dict:
-    """构造 claim dict，方便测试。"""
-    return {
-        "id": str(uuid4()),
-        "article_id": article_id,
-        "claim_type": "direction",
-        "subject": subject,
-        "predicate": predicate,
-        "direction_tag": direction_tag,
-        "direction_angle": direction_angle,
-        "evidence_text": "示例证据。",
-        "confidence": confidence,
-    }

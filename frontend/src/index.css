@@ -3,8 +3,12 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    @apply bg-slate-50;
+  }
+
   body {
-    @apply text-slate-800 antialiased;
+    @apply bg-slate-50 text-slate-800 antialiased;
   }
 }
 

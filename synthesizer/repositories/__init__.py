@@ -1,6 +1,11 @@
 from synthesizer.repositories.article_repo import ArticleRepository
-from synthesizer.repositories.claim_repo import ClaimRepository
 from synthesizer.repositories.batch_repo import BatchRepository
-from synthesizer.repositories.cluster_repo import ClusterRepository
+from synthesizer.repositories.narrative_repo import NarrativeRepository
+from synthesizer.repositories.theme_repo import ThemeRepository
 
-__all__ = ["ArticleRepository", "ClaimRepository", "BatchRepository", "ClusterRepository"]
+__all__ = [
+    "ArticleRepository",
+    "BatchRepository",
+    "NarrativeRepository",
+    "ThemeRepository",
+]

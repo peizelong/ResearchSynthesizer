@@ -1,33 +1,46 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from datetime import datetime
 
 from synthesizer.database import get_db
-from synthesizer.repositories import ArticleRepository, ClaimRepository, BatchRepository, ClusterRepository
-from synthesizer.schemas import BatchCreateRequest, BatchResponse, BatchRunRequest
+from synthesizer.repositories import ArticleRepository, BatchRepository
+from synthesizer.schemas import BatchCreateRequest, BatchResponse
 from synthesizer.extractors import get_extractor
-from synthesizer.clustering import ClusteringService
+from synthesizer.workflow import run_workflow
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/research", tags=["research"])
 
 
 @router.post("/batches", response_model=BatchResponse)
 def create_batch(request: BatchCreateRequest, db: Session = Depends(get_db)):
-    """创建研究批次（自动匹配符合条件的文章）"""
+    """创建研究批次。
+
+    优先使用显式 article_ids；未传时按 source/date 条件自动匹配文章。
+    """
     article_repo = ArticleRepository(db)
     batch_repo = BatchRepository(db)
 
-    # 按条件查找文章
-    articles = article_repo.list(source=request.source_filter[0] if request.source_filter else None, limit=5000)
-    article_ids = [a.id for a in articles]
+    if request.article_ids:
+        existing = [article_repo.get(article_id) for article_id in request.article_ids]
+        article_ids = [article.id for article in existing if article is not None]
+        if len(article_ids) != len(request.article_ids):
+            missing = sorted(set(request.article_ids) - set(article_ids))
+            raise HTTPException(400, f"Some articles were not found: {', '.join(missing)}")
+    else:
+        # 按条件查找文章
+        articles = article_repo.list(source=request.source_filter[0] if request.source_filter else None, limit=5000)
+        article_ids = [a.id for a in articles]
 
-    # 日期过滤
-    if request.date_from or request.date_to:
-        article_ids = [
-            a.id for a in articles
-            if (not request.date_from or (a.published_at and a.published_at >= request.date_from))
-            and (not request.date_to or (a.published_at and a.published_at <= request.date_to))
-        ]
+        # 日期过滤
+        if request.date_from or request.date_to:
+            article_ids = [
+                a.id for a in articles
+                if (not request.date_from or (a.published_at and a.published_at >= request.date_from))
+                and (not request.date_to or (a.published_at and a.published_at <= request.date_to))
+            ]
 
     if not article_ids:
         raise HTTPException(400, "No articles match the filter criteria")
@@ -61,52 +74,34 @@ def get_batch(batch_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/batches/{batch_id}/run")
-def run_batch(batch_id: str, request: BatchRunRequest, db: Session = Depends(get_db)):
-    """运行批次：抽取 claims + 聚类"""
+def run_batch(batch_id: str, db: Session = Depends(get_db)):
+    """运行批次：Narrative Synthesizer 7 节点 workflow。
+
+    article_extract → theme_cluster → theme_merge →
+    angle_compare → logic_chain → company_mapping → report
+    """
     batch_repo = BatchRepository(db)
-    article_repo = ArticleRepository(db)
-    claim_repo = ClaimRepository(db)
 
     batch = batch_repo.get(batch_id)
     if not batch:
         raise HTTPException(404, "Batch not found")
 
     try:
-        # 阶段1: 抽取 claims
-        if request.extract:
-            batch_repo.update_status(batch_id, "running", stage="extract_claims")
-            extractor = get_extractor()
-
-            for article_id in batch.article_ids:
-                article = article_repo.get(article_id)
-                if not article or article.extraction_status == "extracted":
-                    continue
-                article_repo.update_extraction_status(article_id, "extracting")
-                try:
-                    extracted = extractor.extract(article.title, article.content)
-                    for c in extracted:
-                        claim_repo.create(
-                            article_id=article_id,
-                            claim_type=c.claim_type,
-                            subject=c.subject,
-                            predicate=c.predicate,
-                            object_value=c.object_value,
-                            direction_tag=c.direction_tag,
-                            direction_angle=c.direction_angle,
-                            evidence_text=c.evidence_text,
-                            confidence=c.confidence,
-                            extractor_model=extractor.model_name,
-                        )
-                    article_repo.update_extraction_status(article_id, "extracted")
-                except Exception as exc:
-                    article_repo.update_extraction_status(article_id, "failed")
-
-        # 阶段2: 聚类
-        if request.cluster:
-            service = ClusteringService(db)
-            clusters = service.cluster_batch(batch_id)
-
-        return {"status": "completed", "batch_id": batch_id}
+        extractor = get_extractor()
+        final_state = run_workflow(
+            db=db,
+            batch_id=batch_id,
+            article_ids=batch.article_ids,
+            extractor=extractor,
+        )
+        return {
+            "status": "completed",
+            "batch_id": batch_id,
+            "narratives_count": len(final_state.get("narratives", [])),
+            "merged_themes_count": len(final_state.get("merged_themes", [])),
+            "report": final_state.get("report", ""),
+            "errors": final_state.get("errors", []),
+        }
     except Exception as exc:
         batch_repo.update_status(batch_id, "failed", error=str(exc))
         raise HTTPException(500, f"Batch run failed: {exc}") from exc

@@ -1,4 +1,4 @@
-"""Research Synthesizer 爬虫模块。
+"""Narrative Synthesizer 爬虫模块。
 
 提供韭研公社网页端爬虫与爬虫控制器。
 """

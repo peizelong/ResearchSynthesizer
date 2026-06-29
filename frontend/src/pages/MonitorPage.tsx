@@ -21,9 +21,9 @@ export default function MonitorPage() {
 
   const cards = [
     { label: '文章', value: overview.articles, color: 'text-brand-700' },
-    { label: '论断 (claims)', value: overview.claims, color: 'text-emerald-700' },
+    { label: '单文叙事', value: overview.narratives, color: 'text-emerald-700' },
     { label: '研究批次', value: overview.batches, color: 'text-amber-700' },
-    { label: '聚类', value: overview.clusters, color: 'text-violet-700' },
+    { label: '融合主题', value: overview.merged_themes, color: 'text-violet-700' },
   ]
 
   return (

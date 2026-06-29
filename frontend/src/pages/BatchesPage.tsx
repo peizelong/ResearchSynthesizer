@@ -44,7 +44,7 @@ export default function BatchesPage() {
     setRunningId(id)
     setError(null)
     try {
-      await api.runBatch(id, { extract: true, cluster: true })
+      await api.runBatch(id)
       await load()
     } catch (e: any) {
       setError(e.response?.data?.detail || e.message)

@@ -4,7 +4,7 @@ from datetime import datetime
 from uuid import uuid4
 from sqlalchemy.orm import Session
 
-from synthesizer.models import Article, Claim, ResearchBatch, TopicCluster
+from synthesizer.models import Article, ResearchBatch
 
 
 class ArticleRepository:

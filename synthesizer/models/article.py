@@ -23,8 +23,12 @@ class Article(Base):
     extraction_status: Mapped[str] = mapped_column(String(20), default="pending")
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)
 
-    claims: Mapped[list["Claim"]] = relationship(back_populates="article", cascade="all, delete-orphan")
+    narratives: Mapped[list["ArticleNarrative"]] = relationship(
+        back_populates="article", cascade="all, delete-orphan"
+    )
 
 
 Index("ix_articles_source", Article.source)
 Index("ix_articles_source_article_id", Article.source_article_id)
+
+from synthesizer.models.narrative import ArticleNarrative  # noqa: E402

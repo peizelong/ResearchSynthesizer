@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 class BatchCreateRequest(BaseModel):
     name: str | None = None
     description: str | None = None
+    article_ids: list[str] | None = None
     source_filter: list[str] | None = None
     date_from: datetime | None = None
     date_to: datetime | None = None
@@ -29,8 +30,3 @@ class BatchResponse(BaseModel):
 
     class Config:
         from_attributes = True
-
-
-class BatchRunRequest(BaseModel):
-    extract: bool = True
-    cluster: bool = True

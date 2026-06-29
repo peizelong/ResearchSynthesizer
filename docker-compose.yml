@@ -3,7 +3,9 @@ version: "3.9"
 services:
   api:
     build: .
-    container_name: research-synth-api
+    container_name: narrative-synth-api
+    env_file:
+      - .env
     ports:
       - "8000:8000"
     volumes:
@@ -20,12 +22,11 @@ services:
       retries: 3
       start_period: 15s
 
-  # Phase 2+ 引入外部验证时启用
-  # searxng:
-  #   image: searxng/searxng:latest
-  #   container_name: research-synth-searxng
-  #   ports:
-  #     - "8888:8080"
-  #   volumes:
-  #     - ./searxng:/etc/searxng:rw
-  #   restart: unless-stopped
+  frontend:
+    build: ./frontend
+    container_name: narrative-synth-frontend
+    ports:
+      - "3000:80"
+    depends_on:
+      - api
+    restart: unless-stopped
