@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Any
 from pydantic import BaseModel, ConfigDict
 
 
@@ -13,7 +14,7 @@ class NarrativeResponse(BaseModel):
     background: str | None = None
     catalysts: list[str] = []
     industry_segments: list[str] = []
-    companies: list[str] = []
+    companies: list[Any] = []
     logic_chains: list[str] = []
     angle: str | None = None
     sentiment: str | None = None

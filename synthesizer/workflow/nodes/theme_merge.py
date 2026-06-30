@@ -1,10 +1,9 @@
-"""theme_merge_node: 方向融合。
+"""theme_merge_node: MergedDirection 持久化。
 
-对每个 raw_cluster 调 LLM 生成统一 theme_label / sub_directions / consensus，
-创建 MergedTheme 持久化（骨架），并把 MergedThemeData 放入 state.merged_themes。
+Prompt 2 已经完成方向归一与去重；本节点只把 raw_clusters/MergedDirection
+转换为 MergedTheme 持久化，并把 MergedThemeData 放入 state.merged_themes。
 
-后续 angle_compare / logic_chain / company_mapping 节点读取 merged_themes
-逐步回填字段。
+后续兼容节点只补齐缺失字段，不再做主判断。
 """
 from __future__ import annotations
 
@@ -12,7 +11,6 @@ import logging
 
 from synthesizer.repositories import BatchRepository, ThemeRepository
 from synthesizer.services import LLMFusionClient
-from synthesizer.services.prompts import build_merge_prompt
 from synthesizer.workflow.state import MergedThemeData, WorkflowState
 
 logger = logging.getLogger(__name__)
@@ -38,23 +36,15 @@ def build_theme_merge_node(db, llm: LLMFusionClient | None = None):
 
         merged: list[MergedThemeData] = []
         for cluster in raw_clusters:
-            article_ids = cluster.get("article_ids", []) or []
-            sub_dirs = cluster.get("sub_directions", []) or []
-
-            # 调 LLM 生成融合主题
-            try:
-                data = llm.complete_json(
-                    system="你是投研主题融合专家。只输出 JSON。",
-                    user=build_merge_prompt(cluster),
-                )
-                theme_label = data.get("theme_label") or cluster.get("theme_label", "未命名主题")
-                refined_subs = data.get("sub_directions") or sub_dirs
-                consensus = data.get("consensus") or ""
-            except Exception as exc:
-                logger.exception("theme_merge LLM failed for cluster %s", cluster.get("theme_label"))
-                theme_label = cluster.get("theme_label", "未命名主题")
-                refined_subs = sub_dirs
-                consensus = ""
+            article_ids = list(dict.fromkeys(cluster.get("article_ids", []) or []))
+            refined_subs = list(dict.fromkeys(cluster.get("sub_directions", []) or []))
+            theme_label = cluster.get("theme_label", "未命名方向")
+            consensus = cluster.get("consensus", "") or ""
+            combined_logic_chain = _format_logic_chain(cluster.get("combined_logic_chain", []))
+            different_angles = cluster.get("different_angles", []) or []
+            industry_segments = list(dict.fromkeys(cluster.get("industry_segments", []) or []))
+            companies = cluster.get("companies", []) or []
+            catalysts = list(dict.fromkeys(cluster.get("catalysts", []) or []))
 
             # 持久化骨架（angle/logic/company 字段后续回填）
             theme = theme_repo.create(
@@ -63,16 +53,15 @@ def build_theme_merge_node(db, llm: LLMFusionClient | None = None):
                 sub_directions=refined_subs,
                 article_ids=article_ids,
                 member_count=len(article_ids),
-                # 占位空值
                 article_angles={},
-                divergence_points=[],
+                divergence_points=different_angles,
                 consensus=consensus or None,
-                combined_logic_chain=None,
+                combined_logic_chain=combined_logic_chain or None,
                 upstream=[],
-                midstream=[],
+                midstream=industry_segments,
                 downstream=[],
-                companies=[],
-                catalysts=[],
+                companies=companies,
+                catalysts=catalysts,
             )
 
             merged.append(MergedThemeData(
@@ -82,14 +71,18 @@ def build_theme_merge_node(db, llm: LLMFusionClient | None = None):
                 article_ids=theme.article_ids,
                 member_count=theme.member_count,
                 article_angles={},
-                divergence_points=[],
+                divergence_points=different_angles,
                 consensus=consensus,
-                combined_logic_chain="",
+                combined_logic_chain=combined_logic_chain,
                 upstream=[],
-                midstream=[],
+                midstream=industry_segments,
                 downstream=[],
-                companies=[],
-                catalysts=[],
+                companies=companies,
+                catalysts=catalysts,
+                aliases=cluster.get("raw_themes", []) or [],
+                source_unit_ids=cluster.get("source_unit_ids", []) or [],
+                related_directions=cluster.get("related_directions", []) or [],
+                merge_reason=cluster.get("merge_reason", "") or "",
             ))
 
         logger.info(
@@ -99,3 +92,11 @@ def build_theme_merge_node(db, llm: LLMFusionClient | None = None):
         return {"merged_themes": merged}
 
     return theme_merge_node
+
+
+def _format_logic_chain(value) -> str:
+    if isinstance(value, list):
+        return " → ".join(str(item).strip() for item in value if str(item).strip())
+    if isinstance(value, str):
+        return value.strip()
+    return ""

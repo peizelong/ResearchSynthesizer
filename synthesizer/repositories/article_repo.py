@@ -14,8 +14,6 @@ class ArticleRepository:
     def create(self, **kwargs) -> Article:
         if "id" not in kwargs:
             kwargs["id"] = str(uuid4())
-        if "crawled_at" not in kwargs:
-            kwargs["crawled_at"] = datetime.utcnow()
         if "created_at" not in kwargs:
             kwargs["created_at"] = datetime.utcnow()
         article = Article(**kwargs)

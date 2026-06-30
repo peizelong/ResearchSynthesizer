@@ -154,6 +154,7 @@ class CrawlerController:
         """执行爬虫：爬取列表 → 入库。"""
         from synthesizer.crawlers.jiuyan_web import JiuyanWebCrawler
         from synthesizer.database import SessionLocal, initialize_database
+        from synthesizer.models import Article
 
         source = config["source"]
         if source != "jiuyan_web":
@@ -170,22 +171,32 @@ class CrawlerController:
         mode = config["mode"]
         self.add_log(f"JiuyanWeb crawler running: mode={mode}")
 
-        metas = crawler.crawl_incremental(
-            sections=config["sections"],
-            sorts=config["sorts"],
-            fetch_details=config["fetch_details"],
-            max_pages=config["pages"],
-        )
-        self.add_log(f"Crawled {len(metas)} articles")
-
-        # 写入数据库
         saved = 0
-        if metas and not self._stop_event.is_set():
-            db = SessionLocal()
-            try:
+        db = SessionLocal()
+        try:
+            existing_ids = set()
+            if mode == "incremental":
+                rows = (
+                    db.query(Article.source_article_id)
+                    .filter(Article.source == source)
+                    .filter(Article.source_article_id.isnot(None))
+                    .all()
+                )
+                existing_ids = {row[0] for row in rows if row[0]}
+
+            metas = crawler.crawl_incremental(
+                sections=config["sections"],
+                sorts=config["sorts"],
+                fetch_details=config["fetch_details"],
+                max_pages=config["pages"],
+                existing_article_ids=existing_ids,
+            )
+            self.add_log(f"Crawled {len(metas)} new articles")
+
+            if metas and not self._stop_event.is_set():
                 saved = crawler.save_articles(metas, db)
-            finally:
-                db.close()
+        finally:
+            db.close()
         self.add_log(f"Saved {saved} new articles to DB")
 
         return {

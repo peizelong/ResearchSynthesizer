@@ -18,7 +18,6 @@ class Article(Base):
     summary: Mapped[str | None] = mapped_column(Text, nullable=True)
     author: Mapped[str | None] = mapped_column(String(200), nullable=True)
     published_at: Mapped[datetime | None] = mapped_column(nullable=True)
-    crawled_at: Mapped[datetime]
     trust_level: Mapped[str] = mapped_column(String(1), default="C")
     extraction_status: Mapped[str] = mapped_column(String(20), default="pending")
     created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow)

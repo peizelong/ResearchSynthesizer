@@ -17,7 +17,8 @@ class TestPromptBuilder:
         prompt = build_narrative_prompt("测试标题", "测试正文")
         assert "测试标题" in prompt
         assert "测试正文" in prompt
-        assert "main_themes" in prompt
+        assert "units" in prompt
+        assert "叙事单元" in prompt
 
     def test_chunk_article_empty(self):
         assert chunk_article("") == []

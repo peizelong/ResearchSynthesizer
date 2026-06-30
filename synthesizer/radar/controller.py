@@ -248,6 +248,9 @@ class RadarController:
                 batch_id=batch.id,
                 article_ids=article_ids,
             )
+            if article_ids and not final_state.get("narratives") and final_state.get("errors"):
+                first_error = str(final_state["errors"][0])
+                raise RuntimeError(f"叙事抽取全部失败，未生成有效报告。首个错误：{first_error}")
             themes = final_state.get("merged_themes", [])
             report = final_state.get("report", "")
             with self._lock:
@@ -268,17 +271,28 @@ class RadarController:
 
         crawler = JiuyanWebCrawler()
         crawler._stop_event = self._stop_event
+        existing_ids = self._existing_source_article_ids(db)
         metas = crawler.crawl_incremental(
             sections=config["crawl_sections"],
             sorts=config["crawl_sorts"],
             fetch_details=config["fetch_details"],
             max_pages=config["crawl_pages"],
+            existing_article_ids=existing_ids,
         )
         saved = 0
         if metas and not self._stop_event.is_set():
             saved = crawler.save_articles(metas, db)
         self._add_log(f"采集完成：抓取 {len(metas)} 篇，新增 {saved} 篇")
         return len(metas), saved
+
+    def _existing_source_article_ids(self, db) -> set[str]:
+        rows = (
+            db.query(Article.source_article_id)
+            .filter(Article.source == "jiuyan_web")
+            .filter(Article.source_article_id.isnot(None))
+            .all()
+        )
+        return {row[0] for row in rows if row[0]}
 
     def _select_window_articles(self, db, config: dict[str, Any]) -> list[Article]:
         limit = int(config.get("article_limit") or DEFAULT_CONFIG["article_limit"])
@@ -293,7 +307,7 @@ class RadarController:
         )
         in_window = [
             article for article in candidates
-            if (article.published_at or article.crawled_at or article.created_at) >= cutoff
+            if (article.published_at or article.created_at) >= cutoff
         ]
         selected = (in_window or candidates)[:limit]
         self._add_log(f"观察窗口：选入 {len(selected)} 篇文章（近 {window_hours} 小时，最多 {limit} 篇）")

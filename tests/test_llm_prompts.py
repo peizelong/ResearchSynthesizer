@@ -6,11 +6,11 @@ from synthesizer.services.llm import (
     parse_llm_json,
 )
 from synthesizer.services.prompts import (
-    build_angle_prompt,
     build_cluster_prompt,
-    build_company_prompt,
-    build_logic_prompt,
-    build_merge_prompt,
+    build_direction_merge_prompt,
+    build_merge_quality_check_prompt,
+    build_report_prompt,
+    build_unit_extraction_prompt,
 )
 
 
@@ -62,26 +62,33 @@ class TestDemoLLMClient:
 
 
 class TestPromptBuilders:
-    def test_cluster_prompt_contains_themes(self):
-        prompt = build_cluster_prompt([{"article_id": "a1", "main_themes": ["HBM", "AI算力"]}])
+    def test_unit_extraction_prompt_contains_units(self):
+        prompt = build_unit_extraction_prompt("测试标题", "jiuyan_web", "测试正文")
+        assert "测试标题" in prompt
+        assert "测试正文" in prompt
+        assert "叙事单元" in prompt
+        assert "units" in prompt
+
+    def test_direction_merge_prompt_contains_units(self):
+        units = [{"unit_id": "u1", "article_id": "a1", "direction": "HBM", "sub_direction": "AI算力"}]
+        prompt = build_direction_merge_prompt(units)
         assert "HBM" in prompt
-        assert "clusters" in prompt
+        assert "merged_directions" in prompt
 
-    def test_merge_prompt_contains_label(self):
-        prompt = build_merge_prompt({"theme_label": "电池安全", "sub_directions": ["隔膜"]})
-        assert "电池安全" in prompt
-        assert "consensus" in prompt
+    def test_report_prompt_contains_markdown_structure(self):
+        prompt = build_report_prompt([{"direction_name": "电池安全", "sub_directions": ["隔膜"]}])
+        assert "多文章方向聚合报告" in prompt
+        assert "方向 N" in prompt
 
-    def test_angle_prompt_contains_articles(self):
-        prompt = build_angle_prompt("电池安全", [{"article_id": "a1", "angle": "政策角度"}])
-        assert "电池安全" in prompt
-        assert "article_angles" in prompt
+    def test_quality_check_prompt_contains_checks(self):
+        prompt = build_merge_quality_check_prompt(
+            [{"unit_id": "u1", "direction": "电池安全"}],
+            [{"direction_name": "电池安全"}],
+        )
+        assert "has_issue" in prompt
+        assert "over_merge" in prompt
 
-    def test_logic_prompt_contains_label(self):
-        prompt = build_logic_prompt("电池安全", [{"article_id": "a1", "logic_chains": ["x → y"]}])
-        assert "combined_logic_chain" in prompt
-
-    def test_company_prompt_contains_companies(self):
-        prompt = build_company_prompt("电池安全", [{"article_id": "a1", "companies": ["公司A"]}])
-        assert "upstream" in prompt
-        assert "公司A" in prompt
+    def test_cluster_prompt_compatibility_wrapper(self):
+        prompt = build_cluster_prompt([{"unit_id": "u1", "article_id": "a1", "direction": "HBM"}])
+        assert "HBM" in prompt
+        assert "merged_directions" in prompt

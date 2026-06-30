@@ -40,7 +40,6 @@ def db_session():
 @pytest.fixture()
 def sample_articles(db_session) -> list[Article]:
     """创建 3 篇示例文章。"""
-    now = datetime.utcnow()
     articles = []
     for i in range(3):
         a = Article(
@@ -50,7 +49,6 @@ def sample_articles(db_session) -> list[Article]:
             url=f"https://example.com/a/{i}",
             title=f"示例文章 {i}",
             content=f"文章 {i} 的正文内容。",
-            crawled_at=now,
             trust_level="B",
             extraction_status="done",
         )

@@ -15,6 +15,8 @@ from synthesizer.workflow.state import ArticleNarrativeData, WorkflowState
 
 logger = logging.getLogger(__name__)
 
+PROMPT_VERSION = "unit_v2"
+
 
 def build_article_extract_node(db, extractor: NarrativeExtractor | None = None):
     """返回绑定 db 的 article_extract_node 闭包。
@@ -33,6 +35,7 @@ def build_article_extract_node(db, extractor: NarrativeExtractor | None = None):
 
         narratives: list[ArticleNarrativeData] = []
         errors: list[str] = []
+        model_tag = f"{extractor.model_name}:{PROMPT_VERSION}"
 
         for article_id in state["article_ids"]:
             article = article_repo.get(article_id)
@@ -42,31 +45,36 @@ def build_article_extract_node(db, extractor: NarrativeExtractor | None = None):
 
             # 幂等：已有 narrative 的文章跳过
             existing = narrative_repo.list_by_article(article_id)
-            if existing:
+            if existing and all(n.extractor_model == model_tag for n in existing):
                 for n in existing:
                     narratives.append(_to_data(n))
                 continue
+            if existing:
+                narrative_repo.delete_by_article(article_id)
 
             try:
-                extracted = extractor.extract(article.title, article.content)
-                n = narrative_repo.create(
-                    article_id=article_id,
-                    main_themes=extracted.main_themes,
-                    background=extracted.background or None,
-                    catalysts=extracted.catalysts,
-                    industry_segments=extracted.industry_segments,
-                    companies=extracted.companies,
-                    logic_chains=extracted.logic_chains,
-                    angle=extracted.angle or None,
-                    sentiment=extracted.sentiment or None,
-                    time_window=extracted.time_window or None,
-                    extractor_model=extractor.model_name,
-                )
-                narratives.append(_to_data(n))
+                extracted = extractor.extract(article.title, article.content, source=article.source)
+                units = extracted.as_units()
+                for unit in units:
+                    n = narrative_repo.create(
+                        article_id=article_id,
+                        main_themes=unit.main_themes,
+                        background=extracted.article_summary or extracted.background or None,
+                        catalysts=unit.catalysts,
+                        industry_segments=unit.industry_segments,
+                        companies=unit.companies,
+                        logic_chains=unit.logic_chain,
+                        angle=unit.angle or None,
+                        sentiment=extracted.sentiment or None,
+                        # 旧字段复用为 unit importance，避免当前 MVP 增加迁移成本。
+                        time_window=unit.importance or None,
+                        extractor_model=model_tag,
+                    )
+                    narratives.append(_to_data(n))
                 article_repo.update_extraction_status(article_id, "extracted")
                 logger.info(
-                    "article_extract: article %s -> %d themes (model=%s)",
-                    article_id, len(extracted.main_themes), extractor.model_name,
+                    "article_extract: article %s -> %d narrative units (model=%s)",
+                    article_id, len(units), model_tag,
                 )
             except Exception as exc:
                 logger.exception("article_extract failed for article %s", article_id)
@@ -79,16 +87,26 @@ def build_article_extract_node(db, extractor: NarrativeExtractor | None = None):
 
 
 def _to_data(n) -> ArticleNarrativeData:
+    themes = n.main_themes or []
+    direction = themes[0] if themes else ""
+    sub_direction = themes[1] if len(themes) > 1 else ""
+    importance = n.time_window if n.time_window in {"core", "secondary", "mention"} else "core"
     return ArticleNarrativeData(
         narrative_id=n.id,
         article_id=n.article_id,
         main_themes=n.main_themes or [],
+        direction=direction,
+        sub_direction=sub_direction,
+        unit_type="other",
         background=n.background or "",
         catalysts=n.catalysts or [],
         industry_segments=n.industry_segments or [],
         companies=n.companies or [],
         logic_chains=n.logic_chains or [],
+        logic_chain=n.logic_chains or [],
         angle=n.angle or "",
+        source_quotes=[],
+        importance=importance,
         sentiment=n.sentiment or "中性",
         time_window=n.time_window or "",
     )

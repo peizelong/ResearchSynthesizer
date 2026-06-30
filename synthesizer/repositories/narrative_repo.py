@@ -28,6 +28,15 @@ class NarrativeRepository:
             .all()
         )
 
+    def delete_by_article(self, article_id: str) -> int:
+        rows = (
+            self.db.query(ArticleNarrative)
+            .filter(ArticleNarrative.article_id == article_id)
+            .delete(synchronize_session="fetch")
+        )
+        self.db.commit()
+        return rows
+
     def list_by_article_ids(self, article_ids: list[str]) -> list[ArticleNarrative]:
         if not article_ids:
             return []

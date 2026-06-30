@@ -1,7 +1,7 @@
-"""LangGraph 编排：7 节点叙事融合流水线。
+"""LangGraph 编排：分层叙事融合流水线。
 
-article_extract → theme_cluster → theme_merge →
-angle_compare → logic_chain → company_mapping → report
+article_extract → theme_cluster(direction_merge) → theme_merge →
+merge_quality_check → deterministic_enrichment → report
 
 每个节点闭包绑定 db session（与可选 extractor / llm），便于测试注入。
 固定路径，无动态分支。
@@ -19,6 +19,7 @@ from synthesizer.workflow.nodes import (
     build_article_extract_node,
     build_company_mapping_node,
     build_logic_chain_node,
+    build_merge_quality_check_node,
     build_report_node,
     build_theme_cluster_node,
     build_theme_merge_node,
@@ -48,19 +49,21 @@ def build_workflow_graph(
     graph.add_node("article_extract", build_article_extract_node(db, extractor=extractor))
     graph.add_node("theme_cluster", build_theme_cluster_node(db, llm=llm))
     graph.add_node("theme_merge", build_theme_merge_node(db, llm=llm))
+    graph.add_node("merge_quality_check", build_merge_quality_check_node(db, llm=llm))
     graph.add_node("angle_compare", build_angle_compare_node(db, llm=llm))
     graph.add_node("logic_chain", build_logic_chain_node(db, llm=llm))
     graph.add_node("company_mapping", build_company_mapping_node(db, llm=llm))
-    graph.add_node("report", build_report_node(db))
+    graph.add_node("generate_report", build_report_node(db, llm=llm))
 
     graph.set_entry_point("article_extract")
     graph.add_edge("article_extract", "theme_cluster")
     graph.add_edge("theme_cluster", "theme_merge")
-    graph.add_edge("theme_merge", "angle_compare")
+    graph.add_edge("theme_merge", "merge_quality_check")
+    graph.add_edge("merge_quality_check", "angle_compare")
     graph.add_edge("angle_compare", "logic_chain")
     graph.add_edge("logic_chain", "company_mapping")
-    graph.add_edge("company_mapping", "report")
-    graph.add_edge("report", END)
+    graph.add_edge("company_mapping", "generate_report")
+    graph.add_edge("generate_report", END)
 
     return graph.compile()
 
@@ -81,6 +84,8 @@ def run_workflow(
         "raw_clusters": [],
         "merged_themes": [],
         "report": "",
+        "not_merged": [],
+        "quality_issues": [],
         "errors": [],
     }
     return graph.invoke(initial_state)

@@ -21,7 +21,6 @@ export interface ArticleDetail extends ArticleListItem {
   url: string
   content: string
   summary: string | null
-  crawled_at: string
 }
 
 export interface Batch {

@@ -46,42 +46,37 @@ def build_company_mapping_node(db, llm: LLMFusionClient | None = None):
                         "industry_segments": n.get("industry_segments", []),
                     })
 
-            upstream: list[str] = []
-            midstream: list[str] = []
-            downstream: list[str] = []
-            companies: list[dict] = []
-            catalysts: list[str] = []
+            upstream: list[str] = list(theme.get("upstream", []) or [])
+            midstream: list[str] = list(theme.get("midstream", []) or [])
+            downstream: list[str] = list(theme.get("downstream", []) or [])
+            companies: list[dict] = list(theme.get("companies", []) or [])
+            catalysts: list[str] = list(theme.get("catalysts", []) or [])
 
-            if articles_for_prompt:
-                try:
-                    data = llm.complete_json(
-                        system="你是产业链映射专家。只输出 JSON。",
-                        user=build_company_prompt(theme["theme_label"], articles_for_prompt),
-                    )
-                    upstream = data.get("upstream", []) or []
-                    midstream = data.get("midstream", []) or []
-                    downstream = data.get("downstream", []) or []
-                    companies = data.get("companies", []) or []
-                    catalysts = data.get("catalysts", []) or []
-                except Exception as exc:
-                    logger.exception("company_mapping LLM failed for theme %s", theme.get("theme_label"))
-                    # 兜底：汇总各文 companies / catalysts / industry_segments
-                    seen_c: set[str] = set()
-                    seen_cat: set[str] = set()
-                    seen_seg: set[str] = set()
-                    for a in articles_for_prompt:
-                        for c in a.get("companies", []):
-                            if c and c not in seen_c:
-                                seen_c.add(c)
-                                companies.append({"name": c, "direction": "", "article_ids": [a["article_id"]]})
-                        for cat in a.get("catalysts", []):
-                            if cat and cat not in seen_cat:
-                                seen_cat.add(cat)
-                                catalysts.append(cat)
-                        for seg in a.get("industry_segments", []):
-                            if seg and seg not in seen_seg:
-                                seen_seg.add(seg)
-                                midstream.append(seg)
+            if articles_for_prompt and not (companies or catalysts or midstream):
+                seen_c: set[str] = set()
+                seen_cat: set[str] = set()
+                seen_seg: set[str] = set()
+                for article in articles_for_prompt:
+                    for company in article.get("companies", []):
+                        name = company.get("name") if isinstance(company, dict) else str(company)
+                        if name and name not in seen_c:
+                            seen_c.add(name)
+                            companies.append({
+                                "name": name,
+                                "direction": company.get("related_direction", "") if isinstance(company, dict) else "",
+                                "reasons": [company.get("reason", "")] if isinstance(company, dict) and company.get("reason") else [],
+                                "segments": [company.get("segment", "")] if isinstance(company, dict) and company.get("segment") else [],
+                                "source_unit_ids": [],
+                                "article_ids": [article["article_id"]],
+                            })
+                    for catalyst in article.get("catalysts", []):
+                        if catalyst and catalyst not in seen_cat:
+                            seen_cat.add(catalyst)
+                            catalysts.append(catalyst)
+                    for segment in article.get("industry_segments", []):
+                        if segment and segment not in seen_seg:
+                            seen_seg.add(segment)
+                            midstream.append(segment)
 
             theme_repo.update(
                 theme["theme_id"],

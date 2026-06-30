@@ -250,6 +250,7 @@ class JiuyanWebCrawler(BaseCrawler):
             sorts=kwargs.get("sorts"),
             fetch_details=kwargs.get("fetch_details", False),
             max_pages=pages,
+            existing_article_ids=kwargs.get("existing_article_ids"),
         )
 
     def fetch_detail(self, article_id: str) -> ArticleDetail | None:
@@ -286,6 +287,7 @@ class JiuyanWebCrawler(BaseCrawler):
         sorts: list[str] | None = None,
         fetch_details: bool = True,
         max_pages: int = 1,
+        existing_article_ids: set[str] | list[str] | None = None,
     ) -> list[ArticleMeta]:
         """增量爬取：列表页 → （可选）详情页补全。
 
@@ -294,13 +296,18 @@ class JiuyanWebCrawler(BaseCrawler):
             sorts: 要爬的排序列表，默认 ["publish"]
             fetch_details: 是否爬取详情页（完整正文）
             max_pages: 每个板块+排序组合爬几页
+            existing_article_ids: 数据库中已存在的 source_article_id，列表阶段直接跳过
 
         Returns:
-            ArticleMeta 列表（fetch_details=True 时 content 已替换为完整正文）
+            新文章 ArticleMeta 列表（fetch_details=True 时 content 已替换为完整正文）
         """
         sections = sections or ["study", "square"]
         sorts = sorts or ["publish"]
+        existing_ids = {str(item) for item in (existing_article_ids or []) if item}
+        seen_ids: set[str] = set()
         all_metas: list[ArticleMeta] = []
+        skipped_existing = 0
+        skipped_duplicate = 0
 
         for section in sections:
             if self._stop_event.is_set():
@@ -316,6 +323,16 @@ class JiuyanWebCrawler(BaseCrawler):
                 for meta in metas:
                     if self._stop_event.is_set():
                         break
+                    if meta.article_id in seen_ids:
+                        skipped_duplicate += 1
+                        continue
+                    seen_ids.add(meta.article_id)
+
+                    if meta.article_id in existing_ids:
+                        skipped_existing += 1
+                        logger.debug("跳过已存在文章: %s", meta.article_id)
+                        continue
+
                     all_metas.append(meta)
 
                     if fetch_details:
@@ -334,7 +351,12 @@ class JiuyanWebCrawler(BaseCrawler):
                     break
                 _random_delay()
 
-        logger.info("增量爬取完成: 共 %d 篇文章", len(all_metas))
+        logger.info(
+            "增量爬取完成: 新文章 %d 篇，跳过已存在 %d 篇，跳过本轮重复 %d 篇",
+            len(all_metas),
+            skipped_existing,
+            skipped_duplicate,
+        )
         return all_metas
 
     # ------------------------------------------------------------------
@@ -342,10 +364,9 @@ class JiuyanWebCrawler(BaseCrawler):
     # ------------------------------------------------------------------
 
     def save_articles(self, metas: list[ArticleMeta], db) -> int:
-        """把爬取结果写入 Article 表。
+        """把增量爬取结果写入 Article 表。
 
-        INSERT OR REPLACE 逻辑：按 source + source_article_id 去重，
-        已存在则更新，不存在则插入（id 用 uuid4 生成）。
+        按 source + source_article_id 去重；已存在则跳过，只插入新文章。
 
         Args:
             metas: ArticleMeta 列表
@@ -370,30 +391,23 @@ class JiuyanWebCrawler(BaseCrawler):
             ).first()
 
             if existing:
-                existing.title = meta.title
-                existing.content = meta.content
-                existing.url = meta.url
-                existing.author = meta.nickname
-                if published_at is not None:
-                    existing.published_at = published_at
-                existing.crawled_at = now
-            else:
-                article = Article(
-                    id=str(uuid4()),
-                    source=self.source,
-                    source_article_id=meta.article_id,
-                    url=meta.url,
-                    title=meta.title,
-                    content=meta.content,
-                    author=meta.nickname,
-                    published_at=published_at,
-                    crawled_at=now,
-                    trust_level="C",
-                    extraction_status="pending",
-                    created_at=now,
-                )
-                db.add(article)
-                inserted += 1
+                continue
+
+            article = Article(
+                id=str(uuid4()),
+                source=self.source,
+                source_article_id=meta.article_id,
+                url=meta.url,
+                title=meta.title,
+                content=meta.content,
+                author=meta.nickname,
+                published_at=published_at,
+                trust_level="C",
+                extraction_status="pending",
+                created_at=now,
+            )
+            db.add(article)
+            inserted += 1
 
         db.commit()
         logger.info("入库完成: 新增 %d / 共 %d 篇", inserted, len(metas))

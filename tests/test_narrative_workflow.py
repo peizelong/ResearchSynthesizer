@@ -36,7 +36,6 @@ from synthesizer.workflow.nodes.theme_merge import build_theme_merge_node
 # ============================================================
 @pytest.fixture()
 def articles_for_narrative(db_session) -> list[Article]:
-    now = datetime.utcnow()
     articles = []
     titles = [
         "政策推动电池安全监管",
@@ -51,7 +50,6 @@ def articles_for_narrative(db_session) -> list[Article]:
             url=f"https://example.com/n/{i}",
             title=title,
             content=f"文章 {i} 正文。",
-            crawled_at=now,
             trust_level="B",
             extraction_status="pending",
         )
@@ -416,15 +414,17 @@ class TestReportNode:
         })
 
         report = result["report"]
-        assert "# 多文章叙事融合报告" in report
-        assert "## 一、共同关注方向" in report
-        assert "### 1. 多文共识" in report
-        assert "### 2. 不同文章的切入角度" in report
-        assert "### 3. 综合逻辑链" in report
-        assert "### 4. 涉及产业链环节" in report
-        assert "### 5. 文章中反复出现的公司" in report
-        assert "### 6. 需要保留的差异视角" in report
-        assert "### 7. 催化因素" in report
+        assert "# 多文章方向聚合报告" in report
+        assert "## 一、核心结论" in report
+        assert "## 二、去重后的方向总览" in report
+        assert "## 三、核心方向详解" in report
+        assert "#### 3. 多文共识" in report
+        assert "#### 4. 不同切入角度" in report
+        assert "#### 5. 综合逻辑链" in report
+        assert "#### 6. 涉及产业链环节" in report
+        assert "#### 7. 反复出现公司" in report
+        assert "## 四、相关但不应合并的方向" in report
+        assert "## 五、文章覆盖情况" in report
         assert batch_for_narrative.name in report
 
     def test_marks_batch_completed(self, db_session, batch_for_narrative, articles_for_narrative):
@@ -499,8 +499,8 @@ class TestRunWorkflowEndToEnd:
             llm=LLMFusionClient(DemoLLMClient()),
         )
         report = final_state["report"]
-        assert "# 多文章叙事融合报告" in report
-        assert "## 一、共同关注方向" in report
+        assert "# 多文章方向聚合报告" in report
+        assert "## 一、核心结论" in report
 
     def test_marks_batch_completed(self, db_session, batch_for_narrative, articles_for_narrative):
         run_workflow(

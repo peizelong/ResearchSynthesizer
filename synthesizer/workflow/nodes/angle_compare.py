@@ -48,23 +48,21 @@ def build_angle_compare_node(db, llm: LLMFusionClient | None = None):
                         "logic_chains": n.get("logic_chains", []),
                     })
 
-            article_angles: dict[str, str] = {}
-            divergence_points: list[str] = []
+            article_angles: dict[str, str] = dict(theme.get("article_angles", {}) or {})
+            divergence_points: list[str] = list(theme.get("divergence_points", []) or [])
 
-            if articles_for_prompt:
-                try:
-                    data = llm.complete_json(
-                        system="你是投研视角比较专家。只输出 JSON。",
-                        user=build_angle_prompt(theme["theme_label"], articles_for_prompt),
-                    )
-                    article_angles = data.get("article_angles", {}) or {}
-                    divergence_points = data.get("divergence_points", []) or []
-                except Exception as exc:
-                    logger.exception("angle_compare LLM failed for theme %s", theme.get("theme_label"))
-                    # 兜底：用每篇文章自己的 angle
-                    for a in articles_for_prompt:
-                        article_angles[a["article_id"]] = a.get("angle", "")
-                    divergence_points = []
+            if articles_for_prompt and not article_angles:
+                for article in articles_for_prompt:
+                    angle = article.get("angle", "")
+                    if angle:
+                        article_angles[article["article_id"]] = angle
+
+            if not divergence_points:
+                divergence_points = list(dict.fromkeys(
+                    article.get("angle", "")
+                    for article in articles_for_prompt
+                    if article.get("angle", "")
+                ))
 
             # 回填 db
             theme_repo.update(

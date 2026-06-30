@@ -32,7 +32,7 @@ class LLMClient(ABC):
     name: str = "abstract"
 
     @abstractmethod
-    def complete(self, system: str, user: str, temperature: float = 0.2) -> str:
+    def complete(self, system: str, user: str, temperature: float = 0.2, json_mode: bool = True) -> str:
         """返回 LLM 原始文本响应。"""
         ...
 
@@ -40,7 +40,7 @@ class LLMClient(ABC):
 class DeepSeekClient(LLMClient):
     name = "deepseek"
 
-    def complete(self, system: str, user: str, temperature: float = 0.2) -> str:
+    def complete(self, system: str, user: str, temperature: float = 0.2, json_mode: bool = True) -> str:
         if not DEEPSEEK_API_KEY:
             raise ValueError("DEEPSEEK_API_KEY 未配置")
         payload = {
@@ -49,10 +49,11 @@ class DeepSeekClient(LLMClient):
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "response_format": {"type": "json_object"},
             "temperature": temperature,
             "max_tokens": 8192,
         }
+        if json_mode:
+            payload["response_format"] = {"type": "json_object"}
         headers = {
             "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
             "Content-Type": "application/json",
@@ -70,16 +71,17 @@ class DeepSeekClient(LLMClient):
 class OllamaClient(LLMClient):
     name = "ollama"
 
-    def complete(self, system: str, user: str, temperature: float = 0.2) -> str:
+    def complete(self, system: str, user: str, temperature: float = 0.2, json_mode: bool = True) -> str:
         payload = {
             "model": OLLAMA_LLM_MODEL or "qwen2.5",
             "messages": [
                 {"role": "system", "content": system},
                 {"role": "user", "content": user},
             ],
-            "format": "json",
             "temperature": temperature,
         }
+        if json_mode:
+            payload["format"] = "json"
         resp = httpx.post(
             f"{OLLAMA_BASE_URL or 'http://localhost:11434'}/api/chat",
             json=payload,
@@ -102,15 +104,102 @@ class DemoLLMClient(LLMClient):
 
     name = "demo"
 
-    def complete(self, system: str, user: str, temperature: float = 0.2) -> str:
+    def complete(self, system: str, user: str, temperature: float = 0.2, json_mode: bool = True) -> str:
         text = (system + "\n" + user).lower()
 
-        if "聚类" in user or "cluster" in text:
+        if "多文章方向聚合报告" in user:
+            return "\n".join([
+                "# 多文章方向聚合报告",
+                "",
+                "## 一、核心结论",
+                "",
+                "- 本批材料聚合后主要指向电池安全材料升级。",
+                "- 不同文章分别补充了政策监管、产业链供需、资金扩散和公司映射视角。",
+                "",
+                "## 二、去重后的方向总览",
+                "",
+                "| 序号 | 聚合方向 | 子方向 | 来源文章数 | 代表公司 | 核心逻辑 |",
+                "|---|---|---|---|---|---|",
+                "| 1 | 电池安全材料升级 | 隔膜、阻燃、热管理 | 2 | 公司A、公司B | 安全要求提升带动材料体系升级 |",
+                "",
+                "## 三、核心方向详解",
+                "",
+                "### 方向 1：电池安全材料升级",
+                "",
+                "#### 1. 合并后的方向描述",
+                "多篇内容共同指向电池安全要求提升下的材料体系升级。",
+                "",
+                "#### 2. 合并了哪些相近叫法",
+                "- 固态电池安全",
+                "- 隔膜材料升级",
+                "",
+                "#### 3. 多文共识",
+                "安全要求提升是共同主线。",
+                "",
+                "#### 4. 不同切入角度",
+                "- 政策监管角度",
+                "- 产业链供需角度",
+                "",
+                "#### 5. 综合逻辑链",
+                "安全事故/监管趋严 → 电池安全要求提升 → 材料环节需求提升 → 相关方向被重新关注",
+                "",
+                "#### 6. 涉及产业链环节",
+                "- 隔膜",
+                "- 阻燃材料",
+                "- 热管理材料",
+                "",
+                "#### 7. 反复出现公司",
+                "- 公司A：隔膜方向",
+                "- 公司B：阻燃材料方向",
+                "",
+                "#### 8. 需要保留的子方向",
+                "- 隔膜",
+                "- 阻燃",
+                "",
+                "## 四、相关但不应合并的方向",
+                "",
+                "_暂无_",
+                "",
+                "## 五、文章覆盖情况",
+                "",
+                "- 多篇文章共同覆盖电池安全材料升级方向。",
+            ])
+
+        if "质检" in user or "quality" in text:
+            return json.dumps({
+                "has_issue": False,
+                "issues": [],
+                "corrected_merged_directions": [],
+            }, ensure_ascii=False)
+
+        if "方向归一" in user or "mergeddirection" in text or "narrativeunit" in text or "聚类" in user or "cluster" in text:
             # 从输入中提取所有 article_id，使下游节点能匹配到对应文章叙事
             import re
 
             article_ids = re.findall(r'"article_id"\s*:\s*"([^"]+)"', user)
+            unit_ids = re.findall(r'"unit_id"\s*:\s*"([^"]+)"', user)
             return json.dumps({
+                "merged_directions": [
+                    {
+                        "direction_name": "电池安全材料升级",
+                        "aliases": ["固态电池安全", "隔膜材料升级", "电池热失控防护"],
+                        "sub_directions": ["固态电池安全", "隔膜材料升级", "电池热失控防护"],
+                        "source_unit_ids": unit_ids,
+                        "source_article_ids": article_ids,
+                        "consensus": "多篇文章都提到电池安全要求提升正在扩散到材料体系和防护环节。",
+                        "different_angles": ["政策监管角度", "产业链供需角度", "资金扩散角度"],
+                        "combined_logic_chain": ["安全事故/监管趋严", "电池安全要求提升", "隔膜/阻燃/热管理材料需求提升", "相关细分方向被重新关注"],
+                        "catalysts": ["政策推动", "产业事故", "新技术量产"],
+                        "industry_segments": ["隔膜", "阻燃材料", "热管理材料"],
+                        "companies": [
+                            {"name": "公司A", "reasons": ["隔膜方向"], "segments": ["隔膜"], "source_unit_ids": unit_ids[:1]},
+                            {"name": "公司B", "reasons": ["阻燃材料方向"], "segments": ["阻燃材料"], "source_unit_ids": unit_ids[:1]},
+                        ],
+                        "related_directions": [],
+                        "merge_reason": "这些叙事单元都围绕电池安全要求提升后的材料体系升级。",
+                    }
+                ],
+                "not_merged": [],
                 "clusters": [
                     {
                         "theme_label": "电池安全材料升级",
@@ -224,3 +313,9 @@ class LLMFusionClient:
     def complete_json(self, system: str, user: str, temperature: float = 0.2) -> dict | list:
         raw = self.client.complete(system, user, temperature=temperature)
         return parse_llm_json(raw)
+
+    def complete_text(self, system: str, user: str, temperature: float = 0.2) -> str:
+        try:
+            return self.client.complete(system, user, temperature=temperature, json_mode=False)
+        except TypeError:
+            return self.client.complete(system, user, temperature=temperature)

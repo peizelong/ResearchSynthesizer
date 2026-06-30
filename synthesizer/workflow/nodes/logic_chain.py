@@ -45,23 +45,13 @@ def build_logic_chain_node(db, llm: LLMFusionClient | None = None):
                     })
 
             consensus = theme.get("consensus", "") or ""
-            combined_logic_chain = ""
+            combined_logic_chain = theme.get("combined_logic_chain", "") or ""
 
-            if articles_for_prompt:
-                try:
-                    data = llm.complete_json(
-                        system="你是投研逻辑链重建专家。只输出 JSON。",
-                        user=build_logic_prompt(theme["theme_label"], articles_for_prompt),
-                    )
-                    consensus = data.get("consensus", "") or consensus
-                    combined_logic_chain = data.get("combined_logic_chain", "") or ""
-                except Exception as exc:
-                    logger.exception("logic_chain LLM failed for theme %s", theme.get("theme_label"))
-                    # 兜底：拼接各文 logic_chains
-                    all_chains = []
-                    for a in articles_for_prompt:
-                        all_chains.extend(a.get("logic_chains", []))
-                    combined_logic_chain = " | ".join(all_chains)
+            if articles_for_prompt and not combined_logic_chain:
+                all_chains = []
+                for article in articles_for_prompt:
+                    all_chains.extend(article.get("logic_chains", []))
+                combined_logic_chain = " | ".join(str(chain) for chain in all_chains if chain)
 
             theme_repo.update(
                 theme["theme_id"],

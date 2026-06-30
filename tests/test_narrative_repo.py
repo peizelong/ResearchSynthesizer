@@ -15,7 +15,6 @@ def _make_article(db_session) -> Article:
         url="https://example.com/n/1",
         title="叙事测试文章",
         content="正文",
-        crawled_at=datetime.utcnow(),
         trust_level="B",
         extraction_status="pending",
     )

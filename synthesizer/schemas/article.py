@@ -12,7 +12,6 @@ class ArticleResponse(BaseModel):
     summary: str | None = None
     author: str | None = None
     published_at: datetime | None = None
-    crawled_at: datetime
     trust_level: str
     extraction_status: str
     created_at: datetime

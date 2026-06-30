@@ -26,7 +26,17 @@ DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./data/research.db")
 # LLM
 DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "")
 DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
-DEEPSEEK_API_URL = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
+_raw_deepseek_api_url = os.getenv("DEEPSEEK_API_URL", "https://api.deepseek.com/v1/chat/completions")
+
+
+def _normalize_deepseek_api_url(url: str) -> str:
+    normalized = (url or "https://api.deepseek.com/v1/chat/completions").strip().rstrip("/")
+    if normalized in {"https://api.deepseek.com", "https://api.deepseek.com/v1"}:
+        return f"{normalized}/chat/completions" if normalized.endswith("/v1") else f"{normalized}/v1/chat/completions"
+    return normalized
+
+
+DEEPSEEK_API_URL = _normalize_deepseek_api_url(_raw_deepseek_api_url)
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 OLLAMA_LLM_MODEL = os.getenv("OLLAMA_LLM_MODEL", "qwen2.5")
 

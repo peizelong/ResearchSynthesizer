@@ -11,7 +11,7 @@ class DemoNarrativeExtractor(NarrativeExtractor):
 
     model_name = "demo"
 
-    def extract(self, title: str, content: str) -> ExtractedNarrative:
+    def extract(self, title: str, content: str, source: str = "") -> ExtractedNarrative:
         # 根据标题/内容关键词返回不同视角，模拟多文章多角度场景
         text = (title or "") + (content or "")
 
